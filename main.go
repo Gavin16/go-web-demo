@@ -1,7 +1,12 @@
 package main
 
 import (
+	"encoding/json"
+	"fmt"
 	"github.com/gin-gonic/gin"
+	"github.com/gomodule/redigo/redis"
+	"go-web-demo/database"
+	"go-web-demo/redisgo"
 	"net/http"
 )
 
@@ -45,11 +50,45 @@ func getAlbumByID(c *gin.Context) {
 	c.IndentedJSON(http.StatusNotFound, gin.H{"message": "album not found"})
 }
 
+func selectUserById(c *gin.Context) {
+	id := c.Param("id")
+	user, err := database.SelectById(id)
+	if err != nil {
+		fmt.Println("user select err,", err)
+	} else {
+		c.IndentedJSON(http.StatusOK, user)
+	}
+}
+
+func cacheKeyValue(c *gin.Context) {
+	data, _ := c.GetRawData()
+	var m map[string]interface{}
+	_ = json.Unmarshal(data, &m)
+
+	key, value := m["key"], m["value"]
+
+	conn := redisgo.GetConn()
+	_, err1 := conn.Do("set", key, value)
+	if err1 != nil {
+		c.IndentedJSON(http.StatusInternalServerError, "key value cache failed!")
+		return
+	}
+	values, _ := redis.String(conn.Do("get", key))
+	fmt.Println(values)
+	c.IndentedJSON(http.StatusOK, "success!")
+}
+
 func main() {
 	router := gin.Default()
 	router.GET("/albums", getAlbums)
 	router.GET("/albums/:id", getAlbumByID)
 	router.POST("/addAlbums", postAlbums)
+
+	// DB使用
+	router.GET("/user/:id", selectUserById)
+
+	// Redis使用
+	router.POST("/cache", cacheKeyValue)
 
 	router.Run("localhost:8080")
 }
